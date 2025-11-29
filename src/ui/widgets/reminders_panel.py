@@ -4,11 +4,13 @@ Reminders Panel Widget - Displays and manages reminders
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QCheckBox, QPushButton, QTimeEdit, 
-                             QScrollArea, QDialog, QLineEdit, QGraphicsDropShadowEffect)
+                             QScrollArea, QDialog, QLineEdit, QGraphicsDropShadowEffect,
+                             QMessageBox)
 from PyQt6.QtCore import Qt, QTime, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QColor
 from src.models.reminder import Reminder
 from src.services.notification_service import NotificationService
+from src.services.storage_service import StorageService
 
 
 class AddReminderDialog(QDialog):
@@ -17,7 +19,7 @@ class AddReminderDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add New Reminder")
-        self.setFixedSize(400, 320)
+        self.setFixedSize(400, 380)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.init_ui()
@@ -171,6 +173,37 @@ class AddReminderDialog(QDialog):
         
         container_layout.addLayout(content_section)
         
+        # Repeat daily toggle section
+        repeat_section = QHBoxLayout()
+        repeat_section.setSpacing(10)
+        
+        self.repeat_checkbox = QCheckBox()
+        self.repeat_checkbox.setChecked(True)
+        self.repeat_checkbox.setFixedSize(24, 24)
+        self.repeat_checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.repeat_checkbox.setStyleSheet("""
+            QCheckBox::indicator {
+                width: 20px;
+                height: 20px;
+                border-radius: 4px;
+                background: #252542;
+                border: 2px solid #3a3a5a;
+            }
+            QCheckBox::indicator:checked {
+                background: #667eea;
+                border: 2px solid #667eea;
+            }
+        """)
+        repeat_section.addWidget(self.repeat_checkbox)
+        
+        repeat_label = QLabel("🔁 Repeat daily")
+        repeat_label.setFont(QFont("Segoe UI", 11))
+        repeat_label.setStyleSheet("color: #a0a0a0; background: transparent;")
+        repeat_section.addWidget(repeat_label)
+        repeat_section.addStretch()
+        
+        container_layout.addLayout(repeat_section)
+        
         container_layout.addStretch()
         
         # Buttons
@@ -228,6 +261,10 @@ class AddReminderDialog(QDialog):
         """Get reminder content"""
         return self.content_input.text().strip()
     
+    def get_repeat_daily(self) -> bool:
+        """Get repeat daily setting"""
+        return self.repeat_checkbox.isChecked()
+    
     def mousePressEvent(self, event):
         """Allow dragging the dialog"""
         if event.button() == Qt.MouseButton.LeftButton:
@@ -245,6 +282,7 @@ class ReminderItem(QWidget):
     """Individual reminder item widget"""
     
     remove_clicked = pyqtSignal(object)
+    status_changed = pyqtSignal()  # Signal khi có thay đổi cần lưu
     
     # Color palette for different reminders
     COLORS = ['#4a7adb', '#f5a623', '#4caf50', '#e74c3c', '#9b59b6', '#1abc9c']
@@ -268,7 +306,7 @@ class ReminderItem(QWidget):
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(20, 15, 20, 15)
-        layout.setSpacing(15)
+        layout.setSpacing(12)
         
         # Left border indicator (using a vertical line widget)
         border_indicator = QWidget()
@@ -278,7 +316,11 @@ class ReminderItem(QWidget):
         
         # Time and content (left side)
         text_layout = QVBoxLayout()
-        text_layout.setSpacing(6)
+        text_layout.setSpacing(4)
+        
+        # Time row with repeat indicator
+        time_row = QHBoxLayout()
+        time_row.setSpacing(8)
         
         # Time label with color matching border
         self.time_label = QLabel(self.reminder.time.toString("hh:mm AP"))
@@ -286,7 +328,17 @@ class ReminderItem(QWidget):
         time_font.setBold(True)
         self.time_label.setFont(time_font)
         self.time_label.setStyleSheet(f"color: {self.border_color}; background: transparent;")
-        text_layout.addWidget(self.time_label)
+        time_row.addWidget(self.time_label)
+        
+        # Repeat indicator
+        if self.reminder.repeat_daily:
+            repeat_label = QLabel("🔁")
+            repeat_label.setToolTip("Repeats daily")
+            repeat_label.setStyleSheet("background: transparent; font-size: 12px;")
+            time_row.addWidget(repeat_label)
+        
+        time_row.addStretch()
+        text_layout.addLayout(time_row)
         
         # Content label
         self.content_label = QLabel(self.reminder.content)
@@ -297,7 +349,7 @@ class ReminderItem(QWidget):
         
         layout.addLayout(text_layout, 1)
         
-        # Checkbox on the right side
+        # Checkbox
         self.checkbox = QCheckBox()
         self.checkbox.setChecked(self.reminder.completed)
         self.checkbox.stateChanged.connect(self.on_checkbox_changed)
@@ -305,6 +357,25 @@ class ReminderItem(QWidget):
         self.checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
         self.update_checkbox_style()
         layout.addWidget(self.checkbox)
+        
+        # Delete button
+        delete_btn = QPushButton("🗑️")
+        delete_btn.setFixedSize(32, 32)
+        delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_btn.setToolTip("Delete reminder")
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-radius: 6px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background: #ffebee;
+            }
+        """)
+        delete_btn.clicked.connect(self.on_delete_clicked)
+        layout.addWidget(delete_btn)
         
         # Set card styling
         self.setStyleSheet("""
@@ -315,6 +386,10 @@ class ReminderItem(QWidget):
         """)
         
         self.update_completed_style()
+    
+    def on_delete_clicked(self):
+        """Handle delete button click"""
+        self.remove_clicked.emit(self.reminder)
     
     def update_checkbox_style(self):
         """Update checkbox style based on state"""
@@ -364,6 +439,7 @@ class ReminderItem(QWidget):
         self.reminder.completed = self.checkbox.isChecked()
         self.update_checkbox_style()
         self.update_completed_style()
+        self.status_changed.emit()  # Notify parent to save
 
 
 class RemindersPanel(QWidget):
@@ -374,9 +450,11 @@ class RemindersPanel(QWidget):
         self.reminders = []
         self.triggered_reminders = set()  # Track already triggered reminders
         self.notification_service = NotificationService()
+        self.storage_service = StorageService()
         self.init_ui()
         self.load_reminders()
         self.start_reminder_checker()
+        self.start_daily_reset_checker()
     
     def init_ui(self):
         """Initialize UI"""
@@ -461,32 +539,56 @@ class RemindersPanel(QWidget):
         layout.addWidget(add_btn)
     
     def load_reminders(self):
-        """Load default reminders with different colors"""
+        """Load reminders from storage or use defaults"""
         # Reset color index
         ReminderItem._color_index = 0
         
-        default_reminders = [
-            (Reminder(QTime(8, 0), "Learn 10 new words"), "#4a7adb"),      # Blue
-            (Reminder(QTime(12, 0), "Practice pronunciation"), "#f5a623"),  # Orange/Yellow
-            (Reminder(QTime(15, 0), "Grammar exercise"), "#4caf50"),        # Green
-            (Reminder(QTime(19, 0), "Review vocabulary"), "#e74c3c"),       # Red
-        ]
+        # Try to load from storage first
+        saved_reminders, is_new_day = self.storage_service.load_reminders()
         
-        for reminder, color in default_reminders:
-            self.add_reminder(reminder, color)
+        if saved_reminders:
+            # Use saved reminders
+            for reminder in saved_reminders:
+                self.add_reminder(reminder)
+            
+            if is_new_day:
+                # Save the reset state
+                self.save_reminders()
+                # Clear triggered reminders for new day
+                self.triggered_reminders.clear()
+        else:
+            # Use default reminders for first time
+            default_reminders = [
+                (Reminder(QTime(8, 0), "Learn 10 new words", repeat_daily=True), "#4a7adb"),
+                (Reminder(QTime(12, 0), "Practice pronunciation", repeat_daily=True), "#f5a623"),
+                (Reminder(QTime(15, 0), "Grammar exercise", repeat_daily=True), "#4caf50"),
+                (Reminder(QTime(19, 0), "Review vocabulary", repeat_daily=True), "#e74c3c"),
+            ]
+            
+            for reminder, color in default_reminders:
+                self.add_reminder(reminder, color)
+            
+            # Save defaults
+            self.save_reminders()
     
     def add_reminder(self, reminder: Reminder, color: str = None):
         """Add a reminder to the panel"""
         self.reminders.append(reminder)
         item = ReminderItem(reminder, color)
         item.remove_clicked.connect(self.remove_reminder)
+        item.status_changed.connect(self.save_reminders)
         # Insert before the stretch
         self.reminders_layout.insertWidget(self.reminders_layout.count() - 1, item)
+    
+    def save_reminders(self):
+        """Save reminders to storage"""
+        self.storage_service.save_reminders(self.reminders)
     
     def remove_reminder(self, reminder: Reminder):
         """Remove a reminder"""
         if reminder in self.reminders:
             self.reminders.remove(reminder)
+            self.save_reminders()
             self.refresh_reminders()
     
     def refresh_reminders(self):
@@ -503,6 +605,7 @@ class RemindersPanel(QWidget):
         for reminder in sorted(self.reminders, key=lambda r: r.time.msecsSinceStartOfDay()):
             item = ReminderItem(reminder)
             item.remove_clicked.connect(self.remove_reminder)
+            item.status_changed.connect(self.save_reminders)
             # Insert before the stretch
             self.reminders_layout.insertWidget(self.reminders_layout.count() - 1, item)
     
@@ -514,8 +617,10 @@ class RemindersPanel(QWidget):
             content = dialog.get_content()
             if content:
                 reminder_time = dialog.get_time()
-                reminder = Reminder(reminder_time, content)
+                repeat_daily = dialog.get_repeat_daily()
+                reminder = Reminder(reminder_time, content, repeat_daily=repeat_daily)
                 self.add_reminder(reminder)
+                self.save_reminders()
                 self.refresh_reminders()
     
     def start_reminder_checker(self):
@@ -550,3 +655,30 @@ class RemindersPanel(QWidget):
             reminder.content,
             self.window()
         )
+    
+    def start_daily_reset_checker(self):
+        """Start timer to check for daily reset at midnight"""
+        self.last_check_date = None
+        self.daily_reset_timer = QTimer(self)
+        self.daily_reset_timer.timeout.connect(self.check_daily_reset)
+        self.daily_reset_timer.start(60000)  # Check every minute
+    
+    def check_daily_reset(self):
+        """Check if it's a new day and reset daily reminders"""
+        from datetime import date
+        today = date.today()
+        
+        if self.last_check_date is None:
+            self.last_check_date = today
+            return
+        
+        if today > self.last_check_date:
+            self.last_check_date = today
+            # Reset all daily reminders
+            for reminder in self.reminders:
+                reminder.reset_for_new_day()
+            # Clear triggered reminders
+            self.triggered_reminders.clear()
+            # Save and refresh
+            self.save_reminders()
+            self.refresh_reminders()

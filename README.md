@@ -1,4 +1,4 @@
-# AppClockAndRemind 🕐📚
+# Clock and Remind 🕐📚
 
 A lightweight desktop application for learning English with a flip clock and reminder system.
 

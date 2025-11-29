@@ -12,7 +12,7 @@ from src.ui.widgets.reminders_panel import RemindersPanel
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AppClockAndRemind - English Learning")
+        self.setWindowTitle("Clock and Remind - English Learning")
         self.setGeometry(100, 100, 1100, 1200)
         self.setMinimumSize(900, 950)
         
@@ -52,7 +52,7 @@ class MainWindow(QMainWindow):
         header_layout.setSpacing(5)
         
         # Title
-        title = QLabel("⏰ AppClockAndRemind")
+        title = QLabel("⏰ Clock and Remind")
         title_font = QFont("Segoe UI", 28)
         title_font.setBold(True)
         title.setFont(title_font)

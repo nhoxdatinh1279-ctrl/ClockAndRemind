@@ -4,11 +4,19 @@ Notification Service - Handles reminder notifications with sound and popup
 
 import os
 import winsound
+import threading
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QGraphicsDropShadowEffect)
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QFont, QColor
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+
+# Try to import pygame for audio playback
+try:
+    import pygame
+    pygame.mixer.init()
+    PYGAME_AVAILABLE = True
+except ImportError:
+    PYGAME_AVAILABLE = False
 
 
 class NotificationDialog(QDialog):
@@ -18,8 +26,7 @@ class NotificationDialog(QDialog):
         super().__init__(parent)
         self.title_text = title
         self.message_text = message
-        self.media_player = None
-        self.audio_output = None
+        self.sound_playing = False
         self.init_ui()
         self.init_sound()
         
@@ -179,28 +186,24 @@ class NotificationDialog(QDialog):
     def init_sound(self):
         """Initialize and play notification sound"""
         try:
-            # Try to use custom sound file if exists
-            base_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            sound_files = [
-                os.path.join(base_path, "assets", "sounds", "notification.mp3"),
-                os.path.join(base_path, "assets", "sounds", "notification.wav"),
-            ]
+            # Get the app root directory
+            base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            sound_file = os.path.join(base_path, "assets", "sounds", "notification.mp3")
             
-            sound_file = None
-            for sf in sound_files:
-                if os.path.exists(sf):
-                    sound_file = sf
-                    break
-            
-            if sound_file:
-                self.audio_output = QAudioOutput()
-                self.audio_output.setVolume(0.7)
-                self.media_player = QMediaPlayer()
-                self.media_player.setAudioOutput(self.audio_output)
-                self.media_player.setSource(QUrl.fromLocalFile(os.path.abspath(sound_file)))
-                self.media_player.play()
+            if os.path.exists(sound_file) and PYGAME_AVAILABLE:
+                # Use pygame to play sound in a separate thread
+                def play_sound():
+                    try:
+                        pygame.mixer.music.load(sound_file)
+                        pygame.mixer.music.set_volume(0.8)
+                        pygame.mixer.music.play()
+                        self.sound_playing = True
+                    except Exception as e:
+                        print(f"Pygame error: {e}")
+                
+                threading.Thread(target=play_sound, daemon=True).start()
             else:
-                # Use Windows default notification sound
+                # Fallback: Use Windows default notification sound
                 winsound.PlaySound("SystemExclamation", 
                                    winsound.SND_ALIAS | winsound.SND_ASYNC)
         except Exception as e:
@@ -210,6 +213,15 @@ class NotificationDialog(QDialog):
                 winsound.Beep(800, 200)
                 winsound.Beep(1000, 200)
                 winsound.Beep(1200, 300)
+            except:
+                pass
+    
+    def stop_sound(self):
+        """Stop playing sound"""
+        if PYGAME_AVAILABLE and self.sound_playing:
+            try:
+                pygame.mixer.music.stop()
+                self.sound_playing = False
             except:
                 pass
     
@@ -230,8 +242,7 @@ class NotificationDialog(QDialog):
     
     def close_notification(self):
         """Close the notification and stop sound"""
-        if self.media_player:
-            self.media_player.stop()
+        self.stop_sound()
         self.auto_close_timer.stop()
         self.accept()
     

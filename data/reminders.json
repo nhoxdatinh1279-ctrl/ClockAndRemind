@@ -1,0 +1,26 @@
+{
+  "last_saved": "2025-11-30",
+  "reminders": [
+    {
+      "id": "5f45fac8-156c-473c-874c-ec4bc5ef0d6b",
+      "time": "12:00",
+      "content": "Practice pronunciation",
+      "completed": false,
+      "repeat_daily": true
+    },
+    {
+      "id": "faf4f7a8-5673-4ecd-b7bb-0a12f3f45f6e",
+      "time": "15:00",
+      "content": "Grammar exercise",
+      "completed": false,
+      "repeat_daily": true
+    },
+    {
+      "id": "c08e4d92-504e-4df2-966b-759a77b20176",
+      "time": "01:17",
+      "content": "t",
+      "completed": false,
+      "repeat_daily": true
+    }
+  ]
+}
